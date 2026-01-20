@@ -34,14 +34,39 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 });
                 if (error) throw error;
                 alert("Account created! Check your email to confirm."); // Simple feedback for now
+                setError(null);
             }
-            onSuccess();
+            if (isLogin) {
+                // For sign up, we don't necessarily onSuccess yet if email confirmation is needed,
+                // but existing logic calls onSuccess immediately. Keeping as is for now,
+                // assuming auto-confirm or just proceeding.
+                onSuccess();
+            } else {
+                // Warn user to check email if needed, or if Supabase is set to auto-confirm, onSuccess works.
+                // For now, let's allow onSuccess to invoke parent logic.
+                onSuccess();
+            }
         } catch (err: any) {
             setError(err.message || 'An error occurred during authentication.');
         } finally {
             setLoading(false);
         }
     };
+
+    // Check for errors in the URL hash (returned by Supabase 302 redirect)
+    React.useEffect(() => {
+        const hash = window.location.hash;
+        if (hash && hash.includes('error_description')) {
+            const params = new URLSearchParams(hash.substring(1)); // remove #
+            const errorDescription = params.get('error_description');
+            if (errorDescription) {
+                // Decode + to space if needed, though URLSearchParams usually handles it
+                setError(errorDescription.replace(/\+/g, ' '));
+                // Clean up the URL
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+    }, []);
 
     return (
         <div className="flex min-h-screen bg-gray-50 items-center justify-center p-4">
@@ -132,7 +157,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                         onClick={() => supabase.auth.signInWithOAuth({
                             provider: 'google',
                             options: {
-                                redirectTo: 'http://localhost:5173'
+                                redirectTo: 'https://study-nudge.vercel.app/'
                             }
                         })}
                         className="w-full py-3 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
