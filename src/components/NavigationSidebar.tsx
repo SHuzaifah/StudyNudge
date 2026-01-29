@@ -12,6 +12,7 @@ import {
     Edit2,
     Trash2
 } from 'lucide-react';
+import { ActionModal } from './ActionModal';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -155,56 +156,69 @@ export function NavigationSidebar({ session, isOpen, onToggle }: NavigationSideb
         setRecentChats(sessions);
     };
 
-    const handleDeleteChat = async (chat: typeof recentChats[0]) => {
-        const confirmed = window.confirm("Are you sure you want to delete this chat history?");
-        if (!confirmed) return;
+    // Modal State
+    const [targetChat, setTargetChat] = useState<typeof recentChats[0] | null>(null);
+    const [modalAction, setModalAction] = useState<'rename' | 'delete' | null>(null);
 
-        let query = supabase.from('messages').delete().eq('user_id', session.user.id);
-
-        if (chat.conversation_id) {
-            query = query.eq('conversation_id', chat.conversation_id);
-        } else {
-            query = query.gte('created_at', chat.start).lte('created_at', chat.end).is('conversation_id', null);
-        }
-
-        const { error } = await query;
-
-        if (error) {
-            console.error('Error deleting chat:', error);
-            alert('Failed to delete chat. Please ensure database policies allow deletion.');
-            return;
-        }
-
-        if (!error) {
-            fetchChatHistory();
-            setActiveMenuId(null);
-            const params = new URLSearchParams(window.location.search);
-            if (chat.conversation_id && params.get('chatId') === chat.conversation_id) {
-                window.location.href = '/?new=true';
-            } else if (!chat.conversation_id && params.get('start') === chat.start) {
-                window.location.href = '/?new=true';
-            }
-        }
+    const openRenameModal = (chat: typeof recentChats[0]) => {
+        setTargetChat(chat);
+        setModalAction('rename');
     };
 
-    const handleRenameChat = async (chat: typeof recentChats[0]) => {
-        const newTitle = window.prompt("Enter new chat name:", chat.title);
-        if (!newTitle || !newTitle.trim()) return;
+    const openDeleteModal = (chat: typeof recentChats[0]) => {
+        setTargetChat(chat);
+        setModalAction('delete');
+    };
 
-        const lookupKey = chat.conversation_id || chat.start;
-        const currentTitles = session.user.user_metadata?.session_titles || {};
-        const updatedTitles = { ...currentTitles, [lookupKey]: newTitle.trim() };
+    const handleModalConfirm = async (inputValue?: string) => {
+        if (!targetChat || !modalAction) return;
 
-        const { error } = await supabase.auth.updateUser({
-            data: { session_titles: updatedTitles }
-        });
+        if (modalAction === 'delete') {
+            let query = supabase.from('messages').delete().eq('user_id', session.user.id);
 
-        if (!error) {
-            // Manually update
-            session.user.user_metadata = { ...session.user.user_metadata, session_titles: updatedTitles };
-            fetchChatHistory();
-            setActiveMenuId(null);
+            if (targetChat.conversation_id) {
+                query = query.eq('conversation_id', targetChat.conversation_id);
+            } else {
+                query = query.gte('created_at', targetChat.start).lte('created_at', targetChat.end).is('conversation_id', null);
+            }
+
+            const { error } = await query;
+
+            if (error) {
+                console.error('Error deleting chat:', error);
+                alert('Failed to delete chat. Please ensure database policies allow deletion.');
+            } else {
+                fetchChatHistory();
+                setActiveMenuId(null);
+                const params = new URLSearchParams(window.location.search);
+                if (targetChat.conversation_id && params.get('chatId') === targetChat.conversation_id) {
+                    window.location.href = '/?new=true';
+                } else if (!targetChat.conversation_id && params.get('start') === targetChat.start) {
+                    window.location.href = '/?new=true';
+                }
+            }
         }
+
+        if (modalAction === 'rename' && inputValue && inputValue.trim()) {
+            const newTitle = inputValue.trim();
+            const lookupKey = targetChat.conversation_id || targetChat.start;
+            const currentTitles = session.user.user_metadata?.session_titles || {};
+            const updatedTitles = { ...currentTitles, [lookupKey]: newTitle };
+
+            const { error } = await supabase.auth.updateUser({
+                data: { session_titles: updatedTitles }
+            });
+
+            if (!error) {
+                // Manually update
+                session.user.user_metadata = { ...session.user.user_metadata, session_titles: updatedTitles };
+                fetchChatHistory();
+                setActiveMenuId(null);
+            }
+        }
+
+        setModalAction(null);
+        setTargetChat(null);
     };
 
     const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -297,14 +311,14 @@ export function NavigationSidebar({ session, isOpen, onToggle }: NavigationSideb
                                 {activeMenuId === chat.id && (
                                     <div className="absolute right-0 top-full mt-1 w-36 bg-[#1e1e1e] border border-gray-700/50 rounded-lg shadow-xl z-[70] overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                                         <button
-                                            onClick={() => handleRenameChat(chat)}
+                                            onClick={() => openRenameModal(chat)}
                                             className="w-full text-left px-3 py-2.5 text-xs font-medium text-gray-300 hover:text-white hover:bg-white/10 flex items-center gap-2 border-b border-white/5"
                                         >
                                             <Edit2 className="w-3.5 h-3.5" />
                                             Rename
                                         </button>
                                         <button
-                                            onClick={() => handleDeleteChat(chat)}
+                                            onClick={() => openDeleteModal(chat)}
                                             className="w-full text-left px-3 py-2.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-2"
                                         >
                                             <Trash2 className="w-3.5 h-3.5" />
@@ -377,6 +391,19 @@ export function NavigationSidebar({ session, isOpen, onToggle }: NavigationSideb
                     </div>
                 </div>
             </aside>
+
+            <ActionModal
+                isOpen={!!modalAction}
+                onClose={() => { setModalAction(null); setTargetChat(null); }}
+                onConfirm={handleModalConfirm}
+                type={modalAction === 'rename' ? 'input' : 'confirm'}
+                title={modalAction === 'rename' ? 'Rename Chat' : 'Delete Chat'}
+                description={modalAction === 'delete' ? 'Are you sure you want to delete this chat history? This action cannot be undone.' : undefined}
+                initialValue={modalAction === 'rename' && targetChat ? targetChat.title : ''}
+                danger={modalAction === 'delete'}
+                confirmText={modalAction === 'delete' ? 'Delete' : 'Save'}
+                inputPlaceholder="Enter new chat name..."
+            />
         </>
     );
 }

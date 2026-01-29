@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { ActionModal } from '../components/ActionModal';
 import { TaskList } from '../components/TaskList';
 import { TaskCreationModal } from '../components/TaskCreationModal';
 import { type Task } from '../types';
@@ -133,10 +134,32 @@ export function TasksPage({ session }: { session: any }) {
         await supabase.from('tasks').update({ completed: newStatus }).eq('id', taskId);
     };
 
-    const handleDeleteTask = async (taskId: string) => {
+    // Task Deletion Logic
+    const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+
+    const handleDeleteTask = (taskId: string) => {
+        setTaskToDelete(taskId);
+    };
+
+    const executeDeleteTask = async () => {
+        if (!taskToDelete) return;
+
+        const taskId = taskToDelete;
+
+        // Optimistic UI update
         const newTasks = tasks.filter(t => t.id !== taskId);
         setTasks(newTasks);
-        await supabase.from('tasks').delete().eq('id', taskId);
+        setTaskToDelete(null);
+
+        try {
+            const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+            if (error) throw error;
+        } catch (error) {
+            console.error("Error deleting task:", error);
+            alert("Failed to delete task.");
+            // Revert on error could be added here ideally
+            fetchTasks();
+        }
     };
 
     return (
@@ -182,6 +205,18 @@ export function TasksPage({ session }: { session: any }) {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleCreateTask}
+            />
+
+            <ActionModal
+                isOpen={!!taskToDelete}
+                onClose={() => setTaskToDelete(null)}
+                onConfirm={executeDeleteTask}
+                title="Delete Task"
+                description="Are you sure you want to delete this task? This action cannot be undone."
+                type="confirm"
+                danger={true}
+                confirmText="Delete"
+                cancelText="Cancel"
             />
         </div>
     );
