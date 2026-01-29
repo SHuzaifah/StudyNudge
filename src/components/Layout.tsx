@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PanelLeft } from 'lucide-react';
 import { type ReactNode } from 'react';
 import { NavigationSidebar } from './NavigationSidebar';
+import { MobileBottomNav } from './MobileBottomNav';
 
 interface LayoutProps {
     children: ReactNode;
@@ -35,9 +36,12 @@ export function Layout({ children, session }: LayoutProps) {
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-auto w-full">
+                <main className="flex-1 overflow-auto w-full pb-16 md:pb-0">
                     {children}
                 </main>
+
+                {/* Mobile Bottom Navigation */}
+                <MobileBottomNav />
             </div>
         </div>
     );
